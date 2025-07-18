@@ -1,0 +1,8 @@
+body { margin: 0; overflow: hidden; font-family: sans-serif; }
+canvas { display: block; }
+#ui-container { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 1px 1px 2px black; }
+#timer, #score { font-size: 24px; margin-bottom: 10px; }
+#hint-button { padding: 10px; background: #555; border: 1px solid #fff; color: white; cursor: pointer; }
+#message-box { margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; max-width: 300px; }
+.hidden { display: none !important; }
+/* Add styles for puzzle-view, leaderboard, game-over-screen */

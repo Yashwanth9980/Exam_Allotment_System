@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Chronos Enigma</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="ui-container">
+        <div id="timer">02:00:00</div>
+        <div id="score">Score: 7200</div>
+        <button id="hint-button">Need a Hint?</button>
+        <div id="message-box"></div>
+        <div id="puzzle-view"></div> </div>
+    <div id="leaderboard" class="hidden">
+        <h2>Leaderboard</h2>
+        <ol id="leaderboard-list"></ol>
+        <button id="close-leaderboard">Close</button>
+    </div>
+    <div id="game-over-screen" class="hidden">
+        <h2>Game Over</h2>
+        <p>Your Final Score: <span id="final-score"></span></p>
+        <input type="text" id="player-name" placeholder="Enter your name">
+        <button id="submit-score">Submit</button>
+    </div>
+    <canvas id="webgl-canvas"></canvas>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
