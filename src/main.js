@@ -1,21 +1,21 @@
 import * as THREE from 'three';
 import { setupScene } from './scene.js';
 import { createRooms } from './rooms.js';
-import { setupControls } from './controls.js';
-import { initInteractions, checkInteractions } from './interactions.js';
 import { puzzleManager } from './puzzles.js';
 import { gameTimer } from './timer.js';
 import { initUI } from './ui.js';
+// Note: We are not importing controls.js yet to simplify debugging.
 
+// Main Game Class
 class Game {
-    constructor() {
+    constructor(canvasId) {
         // Core components
-        this.sceneData = setupScene('webgl-canvas');
-        this.controls = setupControls(this.sceneData.camera, this.sceneData.renderer.domElement);
+        this.sceneData = setupScene(canvasId);
         this.clock = new THREE.Clock();
 
-        // Game state
-        this.isPaused = false;
+        // Debugging Helper
+        const axesHelper = new THREE.AxesHelper(5); // Shows X(red), Y(green), Z(blue) axes
+        this.sceneData.scene.add(axesHelper);
 
         this.init();
         this.animate();
@@ -23,13 +23,9 @@ class Game {
 
     init() {
         createRooms(this.sceneData.scene);
-        initInteractions(this.sceneData.camera, this.sceneData.scene);
-        puzzleManager.initPuzzles(this.sceneData.scene);
+        // puzzleManager.initPuzzles(this.sceneData.scene); // Can be enabled later
         initUI();
         gameTimer.start();
-
-        // Add player to the scene for collision detection if needed
-        this.sceneData.scene.add(this.controls.getObject());
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
     }
@@ -43,17 +39,12 @@ class Game {
     animate() {
         requestAnimationFrame(this.animate.bind(this));
         
-        const delta = this.clock.getDelta();
-        
-        if (!this.isPaused) {
-            this.controls.update(delta); // Update player movement
-            checkInteractions(); // Check for clicks on objects
-            puzzleManager.update(delta); // Update any animated puzzles
-        }
-
+        // Render the scene
         this.sceneData.renderer.render(this.sceneData.scene, this.sceneData.camera);
     }
 }
 
-// Start the game
-window.game = new Game();
+// **CRITICAL FIX**: Wait for the DOM to be fully loaded before starting the game.
+window.addEventListener('DOMContentLoaded', () => {
+    new Game('webgl-canvas');
+});
