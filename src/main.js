@@ -1,29 +1,28 @@
 import * as THREE from 'three';
 import { setupScene } from './scene.js';
 import { createRooms } from './rooms.js';
+import { setupControls } from './controls.js'; // Import controls
 import { puzzleManager } from './puzzles.js';
 import { gameTimer } from './timer.js';
 import { initUI } from './ui.js';
-// Note: We are not importing controls.js yet to simplify debugging.
 
-// Main Game Class
 class Game {
     constructor(canvasId) {
-        // Core components
         this.sceneData = setupScene(canvasId);
+        // Pass the canvas element to the controls setup
+        this.controls = setupControls(this.sceneData.camera, this.sceneData.renderer.domElement);
         this.clock = new THREE.Clock();
-
-        // Debugging Helper
-        const axesHelper = new THREE.AxesHelper(5); // Shows X(red), Y(green), Z(blue) axes
-        this.sceneData.scene.add(axesHelper);
 
         this.init();
         this.animate();
     }
 
     init() {
+        // Add the camera's container to the scene, so movement works
+        this.sceneData.scene.add(this.controls.getObject());
+
         createRooms(this.sceneData.scene);
-        // puzzleManager.initPuzzles(this.sceneData.scene); // Can be enabled later
+        puzzleManager.initPuzzles(this.sceneData.scene);
         initUI();
         gameTimer.start();
 
@@ -39,12 +38,15 @@ class Game {
     animate() {
         requestAnimationFrame(this.animate.bind(this));
         
-        // Render the scene
+        const delta = this.clock.getDelta();
+        
+        // Update player controls every frame
+        this.controls.update(delta); 
+
         this.sceneData.renderer.render(this.sceneData.scene, this.sceneData.camera);
     }
 }
 
-// **CRITICAL FIX**: Wait for the DOM to be fully loaded before starting the game.
 window.addEventListener('DOMContentLoaded', () => {
     new Game('webgl-canvas');
 });
