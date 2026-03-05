@@ -15,6 +15,7 @@ load_dotenv()
 
 # Configuration
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/exam_allotment")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "exam_allotment")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
@@ -33,7 +34,7 @@ app.add_middleware(
 
 # MongoDB Connection
 client = MongoClient(MONGO_URL)
-db = client.exam_allotment
+db = client[MONGO_DB_NAME]
 users_collection = db.users
 exams_collection = db.exams
 assignments_collection = db.assignments
