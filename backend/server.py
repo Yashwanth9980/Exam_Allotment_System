@@ -207,7 +207,7 @@ async def create_exam(exam: ExamCreate, current_user: dict = Depends(get_current
 
 @app.get("/api/exams")
 async def get_all_exams(current_user: dict = Depends(get_current_user)):
-    exams = list(exams_collection.find({}, {"_id": 0}))
+    exams = list(exams_collection.find({}, {"_id": 0}).limit(100))
     return {"exams": exams}
 
 @app.get("/api/exams/{exam_id}")
@@ -475,7 +475,7 @@ async def get_all_students(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admins can view students")
     
-    students = list(users_collection.find({"role": "student"}, {"_id": 0, "password": 0}))
+    students = list(users_collection.find({"role": "student"}, {"_id": 0, "password": 0}).limit(100))
     return {"students": students}
 
 if __name__ == "__main__":
