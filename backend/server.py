@@ -308,10 +308,17 @@ async def get_exam_assignments(exam_id: str, current_user: dict = Depends(get_cu
     
     assignments = list(assignments_collection.find({"exam_id": exam_id}, {"_id": 0}))
     
+    # Batch fetch student details to avoid N+1 queries
+    student_ids = [a["student_id"] for a in assignments]
+    students = list(users_collection.find(
+        {"id": {"$in": student_ids}},
+        {"_id": 0, "password": 0}
+    ))
+    students_map = {s["id"]: s for s in students}
+    
     # Enrich with student details
     for assignment in assignments:
-        student = users_collection.find_one({"id": assignment["student_id"]}, {"_id": 0, "password": 0})
-        assignment["student"] = student
+        assignment["student"] = students_map.get(assignment["student_id"])
     
     return {"assignments": assignments}
 
@@ -326,10 +333,17 @@ async def get_student_exams(current_user: dict = Depends(get_current_user)):
         {"_id": 0}
     ))
     
+    # Batch fetch exam details to avoid N+1 queries
+    exam_ids = [a["exam_id"] for a in assignments]
+    exams = list(exams_collection.find(
+        {"id": {"$in": exam_ids}},
+        {"_id": 0}
+    ))
+    exams_map = {e["id"]: e for e in exams}
+    
     # Enrich with exam details
     for assignment in assignments:
-        exam = exams_collection.find_one({"id": assignment["exam_id"]}, {"_id": 0})
-        assignment["exam"] = exam
+        assignment["exam"] = exams_map.get(assignment["exam_id"])
     
     return {"exams": assignments}
 
@@ -343,10 +357,17 @@ async def get_student_results(current_user: dict = Depends(get_current_user)):
         {"_id": 0}
     ))
     
+    # Batch fetch exam details to avoid N+1 queries
+    exam_ids = [r["exam_id"] for r in results]
+    exams = list(exams_collection.find(
+        {"id": {"$in": exam_ids}},
+        {"_id": 0}
+    ))
+    exams_map = {e["id"]: e for e in exams}
+    
     # Enrich with exam details
     for result in results:
-        exam = exams_collection.find_one({"id": result["exam_id"]}, {"_id": 0})
-        result["exam"] = exam
+        result["exam"] = exams_map.get(result["exam_id"])
     
     return {"results": results}
 
@@ -385,10 +406,17 @@ async def get_exam_results(exam_id: str, current_user: dict = Depends(get_curren
     
     results = list(assignments_collection.find({"exam_id": exam_id}, {"_id": 0}))
     
+    # Batch fetch student details to avoid N+1 queries
+    student_ids = [r["student_id"] for r in results]
+    students = list(users_collection.find(
+        {"id": {"$in": student_ids}},
+        {"_id": 0, "password": 0}
+    ))
+    students_map = {s["id"]: s for s in students}
+    
     # Enrich with student details
     for result in results:
-        student = users_collection.find_one({"id": result["student_id"]}, {"_id": 0, "password": 0})
-        result["student"] = student
+        result["student"] = students_map.get(result["student_id"])
     
     return {"results": results}
 
