@@ -44,6 +44,7 @@ users_collection = db.users
 exams_collection = db.exams
 assignments_collection = db.assignments
 notifications_collection = db.notifications
+rooms_collection = db.rooms
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -79,9 +80,16 @@ class ExamUpdate(BaseModel):
     total_marks: Optional[int] = None
     description: Optional[str] = None
 
+class RoomCreate(BaseModel):
+    name: str
+    capacity: int
+    building: Optional[str] = ""
+    floor: Optional[str] = ""
+
 class AssignmentCreate(BaseModel):
     exam_id: str
     student_ids: List[str]
+    room_ids: Optional[List[str]] = []
 
 class ResultUpdate(BaseModel):
     assignment_id: str
@@ -360,17 +368,33 @@ async def assign_exam(assignment: AssignmentCreate, current_user: dict = Depends
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     
-    # Create assignments for each student
-    created_assignment_ids = []
+    # Filter out already-assigned students
+    new_student_ids = []
     for student_id in assignment.student_ids:
-        # Check if already assigned
         existing = assignments_collection.find_one({
             "exam_id": assignment.exam_id,
             "student_id": student_id
         })
-        if existing:
-            continue
-        
+        if not existing:
+            new_student_ids.append(student_id)
+
+    # Build room-seat allocation list if rooms are provided
+    seat_allocations = []  # list of (room_id, room_name, seat_number) per slot
+    if assignment.room_ids:
+        rooms_to_use = list(rooms_collection.find({"id": {"$in": assignment.room_ids}}, {"_id": 0}))
+        total_capacity = sum(r["capacity"] for r in rooms_to_use)
+        if len(new_student_ids) > total_capacity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient room capacity. Rooms hold {total_capacity} students but {len(new_student_ids)} are being assigned."
+            )
+        for room in rooms_to_use:
+            for seat in range(1, room["capacity"] + 1):
+                seat_allocations.append((room["id"], room["name"], seat))
+
+    # Create assignments for each new student
+    created_assignment_ids = []
+    for idx, student_id in enumerate(new_student_ids):
         assignment_id = str(uuid.uuid4())
         assignment_data = {
             "id": assignment_id,
@@ -380,15 +404,25 @@ async def assign_exam(assignment: AssignmentCreate, current_user: dict = Depends
             "status": "pending",
             "marks": None,
             "submitted_at": None,
-            "feedback": ""
+            "feedback": "",
+            "room_id": None,
+            "room_name": None,
+            "seat_number": None
         }
+        if seat_allocations and idx < len(seat_allocations):
+            room_id, room_name, seat_number = seat_allocations[idx]
+            assignment_data["room_id"] = room_id
+            assignment_data["room_name"] = room_name
+            assignment_data["seat_number"] = seat_number
+
         assignments_collection.insert_one(assignment_data)
         created_assignment_ids.append(assignment_id)
-        
+
         # Create notification for student
+        room_info = f", Room: {assignment_data['room_name']}, Seat: {assignment_data['seat_number']}" if assignment_data["room_name"] else ""
         create_notification(
             student_id,
-            f"New exam assigned: {exam['title']} - {exam['subject']}",
+            f"New exam assigned: {exam['title']} - {exam['subject']}{room_info}",
             "info"
         )
     
@@ -644,6 +678,86 @@ async def filter_students(
     
     students = list(users_collection.find(query, {"_id": 0, "password": 0}).limit(200))
     return {"students": students, "count": len(students)}
+
+
+# Room Management Routes
+@app.post("/api/rooms")
+async def create_room(room: RoomCreate, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can create rooms")
+
+    room_id = str(uuid.uuid4())
+    room_data = {
+        "id": room_id,
+        "name": room.name,
+        "capacity": room.capacity,
+        "building": room.building,
+        "floor": room.floor,
+        "created_at": datetime.utcnow().isoformat()
+    }
+    rooms_collection.insert_one(room_data)
+    created_room = rooms_collection.find_one({"id": room_id}, {"_id": 0})
+    return {"message": "Room created successfully", "room": created_room}
+
+@app.get("/api/rooms")
+async def get_all_rooms(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view rooms")
+    rooms = list(rooms_collection.find({}, {"_id": 0}))
+    return {"rooms": rooms}
+
+@app.delete("/api/rooms/{room_id}")
+async def delete_room(room_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can delete rooms")
+    result = rooms_collection.delete_one({"id": room_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {"message": "Room deleted successfully"}
+
+@app.get("/api/rooms/allotment/{exam_id}")
+async def get_seating_arrangement(exam_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view seating arrangements")
+
+    exam = exams_collection.find_one({"id": exam_id}, {"_id": 0})
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    assignments = list(assignments_collection.find({"exam_id": exam_id}, {"_id": 0}))
+
+    # Fetch student details
+    student_ids = [a["student_id"] for a in assignments]
+    students = list(users_collection.find({"id": {"$in": student_ids}}, {"_id": 0, "password": 0}))
+    students_map = {s["id"]: s for s in students}
+
+    # Group by room
+    rooms_map = {}
+    unallotted = []
+    for assignment in assignments:
+        student = students_map.get(assignment["student_id"])
+        entry = {
+            "assignment_id": assignment["id"],
+            "seat_number": assignment.get("seat_number"),
+            "student": student
+        }
+        room_name = assignment.get("room_name")
+        if room_name:
+            if room_name not in rooms_map:
+                rooms_map[room_name] = {"room_name": room_name, "room_id": assignment.get("room_id"), "seats": []}
+            rooms_map[room_name]["seats"].append(entry)
+        else:
+            unallotted.append(entry)
+
+    # Sort seats within each room
+    for room in rooms_map.values():
+        room["seats"].sort(key=lambda x: x["seat_number"] or 0)
+
+    return {
+        "exam": exam,
+        "rooms": list(rooms_map.values()),
+        "unallotted": unallotted
+    }
 
 
 if __name__ == "__main__":

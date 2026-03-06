@@ -340,11 +340,15 @@ function AdminDashboard({ token, user, setCurrentView }) {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [showSeatingModal, setShowSeatingModal] = useState(false);
 
   useEffect(() => {
     fetchExams();
     fetchStudents();
     fetchAnalytics();
+    fetchRooms();
   }, []);
 
   const fetchExams = async () => {
@@ -366,6 +370,29 @@ function AdminDashboard({ token, user, setCurrentView }) {
       setStudents(response.data.students);
     } catch (error) {
       console.error('Error fetching students:', error);
+    }
+  };
+
+  const fetchRooms = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/rooms`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setRooms(response.data.rooms);
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+    }
+  };
+
+  const handleDeleteRoom = async (roomId) => {
+    if (!window.confirm('Delete this room?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/rooms/${roomId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchRooms();
+    } catch (error) {
+      alert('Error deleting room');
     }
   };
 
@@ -414,6 +441,11 @@ function AdminDashboard({ token, user, setCurrentView }) {
     setSelectedExam(exam);
     fetchAssignments(exam.id);
     setShowResultsModal(true);
+  };
+
+  const openSeatingModal = (exam) => {
+    setSelectedExam(exam);
+    setShowSeatingModal(true);
   };
 
   const downloadTemplate = async () => {
@@ -471,6 +503,13 @@ function AdminDashboard({ token, user, setCurrentView }) {
           >
             Analytics
           </button>
+          <button
+            onClick={() => setActiveTab('rooms')}
+            className={`px-6 py-3 font-semibold ${activeTab === 'rooms' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            data-testid="tab-rooms"
+          >
+            Rooms ({rooms.length})
+          </button>
         </div>
       </div>
 
@@ -503,6 +542,7 @@ function AdminDashboard({ token, user, setCurrentView }) {
                 onDelete={handleDeleteExam}
                 onAssign={openAssignModal}
                 onResults={openResultsModal}
+                onSeating={openSeatingModal}
               />
             ))}
           </div>
@@ -513,6 +553,55 @@ function AdminDashboard({ token, user, setCurrentView }) {
         <AnalyticsSection analytics={analytics} exams={exams} token={token} />
       )}
 
+      {activeTab === 'rooms' && (
+        <div data-testid="rooms-section">
+          <button
+            onClick={() => setShowCreateRoom(true)}
+            className="mb-6 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition"
+            data-testid="create-room-button"
+          >
+            + Add New Room
+          </button>
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">All Rooms ({rooms.length})</h3>
+            {rooms.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No rooms added yet. Add rooms to enable seat allotment.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Room Name</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Capacity</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Building</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Floor</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {rooms.map(room => (
+                      <tr key={room.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{room.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{room.capacity} seats</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{room.building || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{room.floor || '-'}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleDeleteRoom(room.id)}
+                            className="text-red-600 hover:text-red-800 text-sm font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {activeTab === 'students' && (
         <div data-testid="students-section">
@@ -581,6 +670,7 @@ function AdminDashboard({ token, user, setCurrentView }) {
           token={token}
           exam={selectedExam}
           students={students}
+          rooms={rooms}
           onClose={() => setShowAssignModal(false)}
           onSuccess={() => {
             setShowAssignModal(false);
@@ -615,6 +705,25 @@ function AdminDashboard({ token, user, setCurrentView }) {
         />
       )}
 
+      {showCreateRoom && (
+        <CreateRoomModal
+          token={token}
+          onClose={() => setShowCreateRoom(false)}
+          onSuccess={() => {
+            fetchRooms();
+            setShowCreateRoom(false);
+          }}
+        />
+      )}
+
+      {showSeatingModal && selectedExam && (
+        <SeatingArrangementModal
+          token={token}
+          exam={selectedExam}
+          onClose={() => setShowSeatingModal(false)}
+        />
+      )}
+
     </div>
   );
 }
@@ -645,7 +754,7 @@ function StatCard({ title, value, icon, color }) {
 }
 
 // Exam Card Component
-function ExamCard({ exam, onDelete, onAssign, onResults }) {
+function ExamCard({ exam, onDelete, onAssign, onResults, onSeating }) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition" data-testid={`exam-card-${exam.id}`}>
       <h3 className="text-xl font-bold text-gray-800 mb-2">{exam.title}</h3>
@@ -655,14 +764,21 @@ function ExamCard({ exam, onDelete, onAssign, onResults }) {
         <p><strong>Duration:</strong> {exam.duration} minutes</p>
         <p><strong>Total Marks:</strong> {exam.total_marks}</p>
       </div>
-      
-      <div className="flex space-x-2">
+
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={() => onAssign(exam)}
           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
           data-testid={`assign-exam-${exam.id}`}
         >
           Assign
+        </button>
+        <button
+          onClick={() => onSeating(exam)}
+          className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm transition"
+          data-testid={`view-seating-${exam.id}`}
+        >
+          Seating
         </button>
         <button
           onClick={() => onResults(exam)}
@@ -914,8 +1030,10 @@ function BulkUploadModal({ token, onClose, onSuccess }) {
 }
 
 
-function AssignExamModal({ token, exam, students, onClose, onSuccess }) {
+function AssignExamModal({ token, exam, students, rooms, onClose, onSuccess }) {
   const [selectedStudents, setSelectedStudents] = useState([]);
+  const [selectedRooms, setSelectedRooms] = useState([]);
+  const [error, setError] = useState('');
 
   const toggleStudent = (studentId) => {
     setSelectedStudents(prev =>
@@ -925,61 +1043,128 @@ function AssignExamModal({ token, exam, students, onClose, onSuccess }) {
     );
   };
 
+  const toggleRoom = (roomId) => {
+    setSelectedRooms(prev =>
+      prev.includes(roomId)
+        ? prev.filter(id => id !== roomId)
+        : [...prev, roomId]
+    );
+  };
+
+  const totalSelectedCapacity = rooms
+    .filter(r => selectedRooms.includes(r.id))
+    .reduce((sum, r) => sum + r.capacity, 0);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     if (selectedStudents.length === 0) {
-      alert('Please select at least one student');
+      setError('Please select at least one student');
+      return;
+    }
+    if (selectedRooms.length > 0 && selectedStudents.length > totalSelectedCapacity) {
+      setError(`Selected rooms hold ${totalSelectedCapacity} students but you selected ${selectedStudents.length}`);
       return;
     }
 
     try {
       await axios.post(
         `${API_URL}/api/assignments`,
-        { exam_id: exam.id, student_ids: selectedStudents },
+        { exam_id: exam.id, student_ids: selectedStudents, room_ids: selectedRooms },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       alert('Exam assigned successfully!');
       onSuccess();
-    } catch (error) {
-      console.error('Error assigning exam:', error);
-      alert('Error assigning exam');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error assigning exam');
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" data-testid="assign-exam-modal">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-gray-800 mb-6">Assign Exam: {exam.title}</h2>
-        
+
+        {error && <p className="mb-4 text-red-600 bg-red-50 px-4 py-2 rounded-lg">{error}</p>}
+
         <form onSubmit={handleSubmit}>
-          <div className="space-y-2 mb-6 max-h-96 overflow-y-auto">
-            {students.map(student => (
-              <label
-                key={student.id}
-                className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                data-testid={`student-checkbox-${student.id}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedStudents.includes(student.id)}
-                  onChange={() => toggleStudent(student.id)}
-                  className="w-5 h-5 text-blue-600"
-                />
-                <div>
-                  <p className="font-semibold text-gray-800">{student.name}</p>
-                  <p className="text-sm text-gray-600">{student.email}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Students */}
+            <div>
+              <h3 className="font-semibold text-gray-700 mb-2">
+                Select Students ({selectedStudents.length} selected)
+              </h3>
+              <div className="space-y-2 max-h-72 overflow-y-auto border rounded-lg p-2">
+                {students.map(student => (
+                  <label
+                    key={student.id}
+                    className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    data-testid={`student-checkbox-${student.id}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedStudents.includes(student.id)}
+                      onChange={() => toggleStudent(student.id)}
+                      className="w-5 h-5 text-blue-600"
+                    />
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">{student.name}</p>
+                      <p className="text-xs text-gray-500">{student.usn || student.email}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Rooms */}
+            <div>
+              <h3 className="font-semibold text-gray-700 mb-2">
+                Select Rooms for Allotment <span className="text-xs text-gray-400">(optional)</span>
+              </h3>
+              {rooms.length === 0 ? (
+                <p className="text-sm text-gray-500 border rounded-lg p-4">
+                  No rooms available. Add rooms in the Rooms tab to enable seat allotment.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto border rounded-lg p-2">
+                  {rooms.map(room => (
+                    <label
+                      key={room.id}
+                      className="flex items-center space-x-3 p-3 rounded-lg hover:bg-purple-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedRooms.includes(room.id)}
+                        onChange={() => toggleRoom(room.id)}
+                        className="w-5 h-5 text-purple-600"
+                      />
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm">{room.name}</p>
+                        <p className="text-xs text-gray-500">
+                          Capacity: {room.capacity} seats
+                          {room.building && ` | ${room.building}`}
+                          {room.floor && `, Floor ${room.floor}`}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
                 </div>
-              </label>
-            ))}
+              )}
+              {selectedRooms.length > 0 && (
+                <p className="text-sm mt-2 text-purple-700 font-medium">
+                  Total capacity: {totalSelectedCapacity} seats
+                </p>
+              )}
+            </div>
           </div>
-          
+
           <div className="flex space-x-4">
             <button
               type="submit"
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition"
               data-testid="submit-assign-exam"
             >
-              Assign to {selectedStudents.length} Student(s)
+              Assign {selectedStudents.length} Student(s){selectedRooms.length > 0 ? ' with Room Allotment' : ''}
             </button>
             <button
               type="button"
@@ -1331,7 +1516,7 @@ function StudentExamCard({ assignment }) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6" data-testid={`student-exam-${assignment.id}`}>
       <div className="flex justify-between items-start">
-        <div>
+        <div className="flex-1">
           <h3 className="text-xl font-bold text-gray-800">{exam.title}</h3>
           <p className="text-gray-600 mt-2">
             <strong>Subject:</strong> {exam.subject}
@@ -1350,11 +1535,23 @@ function StudentExamCard({ assignment }) {
               <strong>Description:</strong> {exam.description}
             </p>
           )}
+
+          {assignment.room_name && (
+            <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+              <p className="text-purple-800 font-semibold text-sm">Allotment Details</p>
+              <p className="text-purple-700 mt-1">
+                <strong>Room:</strong> {assignment.room_name}
+              </p>
+              <p className="text-purple-700">
+                <strong>Seat No:</strong> {assignment.seat_number}
+              </p>
+            </div>
+          )}
         </div>
-        
-        <div>
+
+        <div className="ml-4">
           <span className={`px-4 py-2 rounded-full text-sm font-semibold ${isUpcoming ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
-            {isUpcoming ? '📅 Upcoming' : '⏰ Overdue'}
+            {isUpcoming ? 'Upcoming' : 'Overdue'}
           </span>
         </div>
       </div>
@@ -1397,6 +1594,204 @@ function StudentResultCard({ result }) {
             {passed ? '✅ Passed' : '❌ Failed'}
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Create Room Modal
+function CreateRoomModal({ token, onClose, onSuccess }) {
+  const [formData, setFormData] = useState({ name: '', capacity: '', building: '', floor: '' });
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!formData.name || !formData.capacity) {
+      setError('Room name and capacity are required');
+      return;
+    }
+    try {
+      await axios.post(
+        `${API_URL}/api/rooms`,
+        { ...formData, capacity: parseInt(formData.capacity) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      onSuccess();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error creating room');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">Add New Room</h2>
+        {error && <p className="mb-4 text-red-600 bg-red-50 px-4 py-2 rounded-lg">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Room Name *</label>
+            <input
+              type="text"
+              placeholder="e.g. Hall A, Room 101"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Seating Capacity *</label>
+            <input
+              type="number"
+              placeholder="e.g. 30"
+              min="1"
+              value={formData.capacity}
+              onChange={e => setFormData({ ...formData, capacity: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Building</label>
+            <input
+              type="text"
+              placeholder="e.g. Main Block"
+              value={formData.building}
+              onChange={e => setFormData({ ...formData, building: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Floor</label>
+            <input
+              type="text"
+              placeholder="e.g. Ground Floor, 1st Floor"
+              value={formData.floor}
+              onChange={e => setFormData({ ...formData, floor: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex space-x-4 pt-2">
+            <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
+              Add Room
+            </button>
+            <button type="button" onClick={onClose} className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 rounded-lg transition">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Seating Arrangement Modal
+function SeatingArrangementModal({ token, exam, onClose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSeating = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/rooms/allotment/${exam.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setData(response.data);
+      } catch (err) {
+        console.error('Error fetching seating arrangement:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSeating();
+  }, [exam.id, token]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Seating Arrangement: {exam.title}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">&times;</button>
+        </div>
+
+        {loading ? (
+          <p className="text-center text-gray-500 py-8">Loading...</p>
+        ) : !data ? (
+          <p className="text-center text-red-500 py-8">Failed to load seating arrangement.</p>
+        ) : (
+          <div className="space-y-6">
+            {data.rooms.length === 0 && data.unallotted.length === 0 && (
+              <p className="text-center text-gray-500 py-8">No students assigned to this exam yet.</p>
+            )}
+
+            {data.rooms.map(room => (
+              <div key={room.room_id} className="border border-purple-200 rounded-xl p-5">
+                <h3 className="text-lg font-bold text-purple-800 mb-3">
+                  {room.room_name}
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    ({room.seats.length} student{room.seats.length !== 1 ? 's' : ''})
+                  </span>
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead className="bg-purple-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Seat No.</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Student Name</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">USN</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Section</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Branch</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {room.seats.map(seat => (
+                        <tr key={seat.assignment_id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-sm font-bold text-purple-700">{seat.seat_number}</td>
+                          <td className="px-4 py-2 text-sm text-gray-800">{seat.student?.name || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{seat.student?.usn || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{seat.student?.section || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{seat.student?.branch || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+
+            {data.unallotted.length > 0 && (
+              <div className="border border-yellow-200 rounded-xl p-5">
+                <h3 className="text-lg font-bold text-yellow-800 mb-3">
+                  Unallotted Students
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    (no room assigned)
+                  </span>
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead className="bg-yellow-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Student Name</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">USN</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Section</th>
+                        <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Branch</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {data.unallotted.map(entry => (
+                        <tr key={entry.assignment_id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-sm text-gray-800">{entry.student?.name || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{entry.student?.usn || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{entry.student?.section || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{entry.student?.branch || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
