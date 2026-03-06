@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -10,6 +11,8 @@ from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
 import uuid
+import csv
+import io
 
 load_dotenv()
 
@@ -50,6 +53,9 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     role: str  # admin or student
+    usn: Optional[str] = None  # University Seat Number (for students)
+    section: Optional[str] = None  # Section (for students)
+    branch: Optional[str] = None  # Branch/Department (for students)
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -144,6 +150,13 @@ async def register(user: UserRegister):
         "role": user.role,
         "created_at": datetime.utcnow().isoformat()
     }
+    
+    # Add student-specific fields if role is student
+    if user.role == "student":
+        user_data["usn"] = user.usn or ""
+        user_data["section"] = user.section or ""
+        user_data["branch"] = user.branch or ""
+    
     users_collection.insert_one(user_data)
     
     # Create welcome notification
@@ -179,6 +192,93 @@ async def login(user: UserLogin):
             "role": db_user["role"]
         }
     }
+
+
+# Bulk Student Upload Routes
+@app.get("/api/students/template")
+async def download_template(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can download template")
+    
+    # Create CSV template
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Name', 'Email', 'USN', 'Section', 'Branch', 'Password'])
+    writer.writerow(['John Doe', 'john@example.com', 'USN001', 'A', 'Computer Science', 'password123'])
+    writer.writerow(['Jane Smith', 'jane@example.com', 'USN002', 'B', 'Electronics', 'password123'])
+    
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=students_template.csv"}
+    )
+
+@app.post("/api/students/bulk-upload")
+async def bulk_upload_students(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can upload students")
+    
+    if not file.filename.endswith(('.csv', '.xlsx')):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+    
+    try:
+        content = await file.read()
+        decoded = content.decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(decoded))
+        
+        created_count = 0
+        skipped_count = 0
+        errors = []
+        
+        for row_num, row in enumerate(csv_reader, start=2):
+            try:
+                # Check required fields
+                if not all(key in row for key in ['Name', 'Email', 'Password']):
+                    errors.append(f"Row {row_num}: Missing required fields")
+                    continue
+                
+                # Check if email already exists
+                if users_collection.find_one({"email": row['Email'].strip()}):
+                    skipped_count += 1
+                    continue
+                
+                # Create student
+                user_data = {
+                    "id": str(uuid.uuid4()),
+                    "name": row['Name'].strip(),
+                    "email": row['Email'].strip(),
+                    "password": hash_password(row['Password'].strip()),
+                    "role": "student",
+                    "usn": row.get('USN', '').strip(),
+                    "section": row.get('Section', '').strip(),
+                    "branch": row.get('Branch', '').strip(),
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                users_collection.insert_one(user_data)
+                
+                # Create welcome notification
+                create_notification(
+                    user_data["id"],
+                    f"Welcome to Exam Allotment System, {user_data['name']}!",
+                    "success"
+                )
+                
+                created_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {row_num}: {str(e)}")
+        
+        return {
+            "message": "Bulk upload completed",
+            "created": created_count,
+            "skipped": skipped_count,
+            "errors": errors
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
+
 
 # Exam Routes (Admin)
 @app.post("/api/exams")
@@ -505,6 +605,44 @@ async def get_all_students(current_user: dict = Depends(get_current_user)):
     
     students = list(users_collection.find({"role": "student"}, {"_id": 0, "password": 0}).limit(100))
     return {"students": students}
+
+
+# Get unique sections and branches
+@app.get("/api/students/sections")
+async def get_sections(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view sections")
+    
+    sections = users_collection.distinct("section", {"role": "student", "section": {"$ne": ""}})
+    return {"sections": sorted(sections)}
+
+@app.get("/api/students/branches")
+async def get_branches(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view branches")
+    
+    branches = users_collection.distinct("branch", {"role": "student", "branch": {"$ne": ""}})
+    return {"branches": sorted(branches)}
+
+# Get students by section or branch
+@app.get("/api/students/filter")
+async def filter_students(
+    section: Optional[str] = None,
+    branch: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can filter students")
+    
+    query = {"role": "student"}
+    if section:
+        query["section"] = section
+    if branch:
+        query["branch"] = branch
+    
+    students = list(users_collection.find(query, {"_id": 0, "password": 0}).limit(200))
+    return {"students": students, "count": len(students)}
+
 
 if __name__ == "__main__":
     import uvicorn

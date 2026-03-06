@@ -180,7 +180,10 @@ function AuthForm({ setToken, setUser, setCurrentView }) {
     name: '',
     email: '',
     password: '',
-    role: 'student'
+    role: 'student',
+    usn: '',
+    section: '',
+    branch: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -258,15 +261,46 @@ function AuthForm({ setToken, setUser, setCurrentView }) {
           />
           
           {!isLogin && (
-            <select
-              value={formData.role}
-              onChange={(e) => setFormData({...formData, role: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              data-testid="auth-role-select"
-            >
-              <option value="student">Student</option>
-              <option value="admin">Admin/Teacher</option>
-            </select>
+            <>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({...formData, role: e.target.value})}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                data-testid="auth-role-select"
+              >
+                <option value="student">Student</option>
+                <option value="admin">Admin/Teacher</option>
+              </select>
+              
+              {formData.role === 'student' && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="USN (University Seat Number)"
+                    value={formData.usn}
+                    onChange={(e) => setFormData({...formData, usn: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    data-testid="auth-usn-input"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Section (e.g., A, B, C)"
+                    value={formData.section}
+                    onChange={(e) => setFormData({...formData, section: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    data-testid="auth-section-input"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Branch (e.g., Computer Science, Electronics)"
+                    value={formData.branch}
+                    onChange={(e) => setFormData({...formData, branch: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    data-testid="auth-branch-input"
+                  />
+                </>
+              )}
+            </>
           )}
           
           <button
@@ -305,6 +339,7 @@ function AdminDashboard({ token, user, setCurrentView }) {
   const [showCreateExam, setShowCreateExam] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
 
   useEffect(() => {
     fetchExams();
@@ -381,6 +416,27 @@ function AdminDashboard({ token, user, setCurrentView }) {
     setShowResultsModal(true);
   };
 
+  const downloadTemplate = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/students/template`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'students_template.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+    } catch (error) {
+      console.error('Error downloading template:', error);
+      alert('Error downloading template');
+    }
+  };
+
   return (
     <div className="space-y-6" data-testid="admin-dashboard">
       <div className="bg-white rounded-xl shadow-lg p-6">
@@ -400,6 +456,13 @@ function AdminDashboard({ token, user, setCurrentView }) {
             data-testid="tab-exams"
           >
             Exams
+          </button>
+          <button
+            onClick={() => setActiveTab('students')}
+            className={`px-6 py-3 font-semibold ${activeTab === 'students' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            data-testid="tab-students"
+          >
+            Students
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
@@ -450,6 +513,57 @@ function AdminDashboard({ token, user, setCurrentView }) {
         <AnalyticsSection analytics={analytics} exams={exams} token={token} />
       )}
 
+
+      {activeTab === 'students' && (
+        <div data-testid="students-section">
+          <div className="mb-6 flex space-x-4">
+            <button
+              onClick={() => setShowBulkUpload(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition"
+              data-testid="bulk-upload-button"
+            >
+              📤 Bulk Upload Students
+            </button>
+            <button
+              onClick={downloadTemplate}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition"
+              data-testid="download-template-button"
+            >
+              📥 Download Template
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">All Students ({students.length})</h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">USN</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Section</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Branch</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {students.map(student => (
+                    <tr key={student.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-800">{student.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{student.email}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{student.usn || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{student.section || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{student.branch || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {showCreateExam && (
         <CreateExamModal
           token={token}
@@ -487,6 +601,20 @@ function AdminDashboard({ token, user, setCurrentView }) {
           }}
         />
       )}
+
+
+      {showBulkUpload && (
+        <BulkUploadModal
+          token={token}
+          onClose={() => setShowBulkUpload(false)}
+          onSuccess={() => {
+            fetchStudents();
+            fetchAnalytics();
+            setShowBulkUpload(false);
+          }}
+        />
+      )}
+
     </div>
   );
 }
@@ -667,6 +795,125 @@ function CreateExamModal({ token, onClose, onSuccess }) {
 }
 
 // Assign Exam Modal
+
+// Bulk Upload Modal
+function BulkUploadModal({ token, onClose, onSuccess }) {
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+    setResult(null);
+  };
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file) {
+      alert('Please select a file');
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/students/bulk-upload`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+      setResult(response.data);
+      if (response.data.created > 0) {
+        setTimeout(() => onSuccess(), 2000);
+      }
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Error uploading file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">📤 Bulk Upload Students</h2>
+        
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <h3 className="font-semibold text-blue-800 mb-2">Instructions:</h3>
+          <ol className="list-decimal list-inside text-sm text-blue-700 space-y-1">
+            <li>Download the CSV template using the "Download Template" button</li>
+            <li>Fill in student details (Name, Email, USN, Section, Branch, Password)</li>
+            <li>Upload the completed CSV file</li>
+            <li>Students will be automatically registered and notified</li>
+          </ol>
+        </div>
+
+        <form onSubmit={handleUpload}>
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Select CSV File
+            </label>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleFileChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={uploading}
+            />
+          </div>
+
+          {result && (
+            <div className={`mb-6 p-4 rounded-lg ${result.created > 0 ? 'bg-green-50' : 'bg-yellow-50'}`}>
+              <h3 className="font-semibold mb-2">Upload Results:</h3>
+              <ul className="text-sm space-y-1">
+                <li className="text-green-700">✅ Created: {result.created} students</li>
+                {result.skipped > 0 && (
+                  <li className="text-yellow-700">⚠️ Skipped: {result.skipped} (already exist)</li>
+                )}
+                {result.errors.length > 0 && (
+                  <li className="text-red-700">
+                    ❌ Errors: {result.errors.length}
+                    <ul className="ml-4 mt-1">
+                      {result.errors.slice(0, 5).map((err, idx) => (
+                        <li key={idx} className="text-xs">{err}</li>
+                      ))}
+                    </ul>
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex space-x-4">
+            <button
+              type="submit"
+              disabled={uploading || !file}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition disabled:bg-gray-400"
+            >
+              {uploading ? 'Uploading...' : 'Upload Students'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 rounded-lg transition"
+            >
+              Close
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
 function AssignExamModal({ token, exam, students, onClose, onSuccess }) {
   const [selectedStudents, setSelectedStudents] = useState([]);
 
