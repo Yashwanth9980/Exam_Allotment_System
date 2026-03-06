@@ -1,12 +1,14 @@
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+# Environment files (real secrets - never commit these)
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+frontend/build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
